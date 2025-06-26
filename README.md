@@ -1,5 +1,5 @@
 # Password-Manager
-A lightweight password manager written in C
+A lightweight password manager written in C and uses the raygui/raylib libraries.
 Stores credentials in an AES256 openssl encrypted vault file.
 Each entry consists of a site field, username field, and a password field.
 # Features:
@@ -14,11 +14,16 @@ Each entry consists of a site field, username field, and a password field.
         - To access the vault after saving and exiting reenter the password first used to create the vault.
 
 # Requirements:
-OpenSSL library is needed for the password manager to run.
+OpenSSL Libraries used are included.
+The raylib and raygui libraries are included.
 
 # Instructions: 
 1st
-    - gcc main.c entry.c crypto.c storage.c -Iinclude -lcrypto -lssl -o password_manager
+    - Run:
+        gcc main.c crypto.c storage.c entry.c -Iinclude -lraylib -lcrypto -lssl -o password_manager
 2nd 
-    - ./password_manager
+    -Execute: 
+        ./password_manager
+
+
 

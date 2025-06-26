@@ -5,7 +5,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "crypto.h"
+#include "vault_crypto.h"
 
 #define SALT_SIZE 8
 #define KEY_SIZE 32

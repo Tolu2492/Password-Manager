@@ -1,134 +1,182 @@
+
+#include "raylib.h"
+#define RAYGUI_IMPLEMENTATION
+#include "raygui.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "entry.h"
-#include "crypto.h"
+#include "vault_crypto.h"
 #include "storage.h"
 
 #define FILENAME "vault.dat"
 #define PASSWORD_MAX 128
 
-#include <sys/stat.h>
-
-//checks if vault exists
-int file_exists(const char *filename) {
-    struct stat buffer;
-    return stat(filename, &buffer) == 0;
-}
-
-
 int main() {
+    InitWindow(800, 600, "Password Vault");
+    SetTargetFPS(60);
+
     Entry entries[MAX_ENTRIES];
     int count = 0;
+    char password[PASSWORD_MAX] = {0};
+    bool vaultLoaded = false;
+    bool passwordInputActive = true;
+    bool showPassword = false;
 
-    char password[PASSWORD_MAX];
-    printf("Enter vault password: ");
-    if (fgets(password, sizeof(password), stdin) == NULL) {
-        fprintf(stderr, "Failed to read password.\n");
-        return 1;
-    }
-    password[strcspn(password, "\n")] = 0;
+    char site[MAX_FIELD] = {0};
+    char user[MAX_FIELD] = {0};
+    char pass[MAX_FIELD] = {0};
 
-    //decrypts if vault exists
-    if (file_exists(FILENAME)) {
-        char *decrypted_data = decrypt_file(FILENAME, password);
-        if (!decrypted_data) {
-            fprintf(stderr, "Failed to decrypt the vault. Password may be incorrect.\n");
-            return 1;
+    int selectedEntry = -1;
+
+    bool siteEdit = false;
+    bool userEdit = false;
+    bool passEdit = false;
+
+    while (!WindowShouldClose()) {
+        BeginDrawing();
+        ClearBackground(RAYWHITE);
+
+    if (!vaultLoaded) {
+        int screenWidth = GetScreenWidth();
+        int screenHeight = GetScreenHeight();
+
+        //UI element sizes
+        const int textboxWidth = 300;
+        const int textboxHeight = 30;
+        const int buttonWidth = 80;
+        const int buttonHeight = 30;
+        const int spacing = 10;
+
+        //Total width of textbox + spacing + button
+        int totalWidth = textboxWidth + spacing + buttonWidth;
+
+        //Y-position (centered vertically)
+        int centerY = screenHeight / 2;
+
+        //X-position for the textbox
+        int startX = (screenWidth - totalWidth) / 2;
+
+        //Prompt text
+        const char *prompt = "Enter Vault Password:";
+        int promptFontSize = 20;
+        int promptWidth = MeasureText(prompt, promptFontSize);
+
+        //Centers the prompt text horizontally above the input box
+        DrawText(prompt, (screenWidth - promptWidth) / 2, centerY - 60, promptFontSize, DARKGRAY);
+
+        //password textbox
+        Rectangle textboxBounds = { startX, centerY - textboxHeight / 2, textboxWidth, textboxHeight };
+        GuiTextBox(textboxBounds, password, PASSWORD_MAX, passwordInputActive);
+
+        //load button next to the textbox
+        Rectangle buttonBounds = { startX + textboxWidth + spacing, centerY - buttonHeight / 2, buttonWidth, buttonHeight };
+        if (GuiButton(buttonBounds, "Load")) {
+            char *decrypted = decrypt_file(FILENAME, password);
+            if (decrypted) {
+                count = csv_to_entries(decrypted, entries, MAX_ENTRIES);
+                free(decrypted);
+                vaultLoaded = true;
+            } else {
+                //else create new vault
+                count = 0;
+                vaultLoaded = true;
+            }
         }
-        count = csv_to_entries(decrypted_data, entries, MAX_ENTRIES);
-        free(decrypted_data);
-    } else {
-        printf("No vault found. Starting fresh.\n");
-    }
+    }else {
+            DrawText("Vault Entries", 20, 10, 20, DARKBLUE);
 
-//Vault Menus
-while (1) {
-    printf("\n--- Vault Entries ---\n");
-    for (int i = 0; i < count; i++) {
-        printf("%d. Site: %s | User: %s | Pass: %s\n", i + 1, entries[i].site, entries[i].user, entries[i].password);
-    }
-
-    printf("\nChoose an action:\n");
-    printf("1. Add Entry\n2. Edit Entry\n3. Delete Entry\n4. Save and Exit\n> ");
-    int choice;
-    if (scanf("%d", &choice) != 1) {
-        fprintf(stderr, "Invalid input.\n");
-        break;
-    }
-    getchar();
-
-        switch (choice) {
-            case 1:
-                if (count < MAX_ENTRIES) {
-                    Entry new_entry;
-                    printf("Enter site: "); fgets(new_entry.site, MAX_FIELD, stdin); new_entry.site[strcspn(new_entry.site, "\n")] = 0;
-                    printf("Enter user: "); fgets(new_entry.user, MAX_FIELD, stdin); new_entry.user[strcspn(new_entry.user, "\n")] = 0;
-                    printf("Enter pass: "); fgets(new_entry.password, MAX_FIELD, stdin); new_entry.password[strcspn(new_entry.password, "\n")] = 0;
-                    entries[count++] = new_entry;
-                } else {
-                    printf("Entry limit reached.\n");
+            for (int i = 0; i < count; i++) {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer), "%d. %s | %s | %s", i + 1, entries[i].site, entries[i].user, entries[i].password);
+                if (GuiButton((Rectangle){20, 40 + i * 35, 600, 30}, buffer)) {
+                    selectedEntry = i;
+                    strcpy(site, entries[i].site);
+                    strcpy(user, entries[i].user);
+                    strcpy(pass, entries[i].password);
+                    siteEdit = userEdit = passEdit = false;
                 }
-                break;
-
-            case 2: {
-                int index;
-                printf("Enter entry number to edit: "); 
-                if (scanf("%d", &index) == 1) {
-                    getchar();
-                    if (index >= 1 && index <= count) {
-                        index--;
-                        printf("Edit site: "); fgets(entries[index].site, MAX_FIELD, stdin); entries[index].site[strcspn(entries[index].site, "\n")] = 0;
-                        printf("Edit user: "); fgets(entries[index].user, MAX_FIELD, stdin); entries[index].user[strcspn(entries[index].user, "\n")] = 0;
-                        printf("Edit pass: "); fgets(entries[index].password, MAX_FIELD, stdin); entries[index].password[strcspn(entries[index].password, "\n")] = 0;
-                    } else {
-                        printf("Invalid entry number.\n");
-                    }
-                } else {
-                    getchar();
-                    printf("Invalid input.\n");
-                }
-                break;
             }
 
-            case 3: {
-                int index;
-                printf("Enter entry number to delete: ");
-                if (scanf("%d", &index) == 1) {
-                    getchar();
-                    if (index >= 1 && index <= count) {
-                        for (int i = index - 1; i < count - 1; i++) {
-                            entries[i] = entries[i + 1];
-                        }
-                        count--;
-                    } else {
-                        printf("Invalid entry number.\n");
-                    }
-                } else {
-                    getchar();
-                    printf("Invalid input.\n");
-                }
-                break;
+            if (GuiButton((Rectangle){650, 40, 120, 30}, "Add Entry")) {
+                selectedEntry = -1;
+                strcpy(site, "");
+                strcpy(user, "");
+                strcpy(pass, "");
+                siteEdit = userEdit = passEdit = false;
             }
 
-            case 4: {
-                char csv_data[MAX_ENTRIES * 400];
+            if (GuiButton((Rectangle){650, 80, 120, 30}, "Save Vault")) {
+                char csv_data[8192];
                 entries_to_csv(entries, count, csv_data, sizeof(csv_data));
-                if (encrypt_data((unsigned char *)csv_data, strlen(csv_data), password, FILENAME)) {
-                    printf("Vault updated and saved.\n");
-                } else {
-                    fprintf(stderr, "Failed to save the vault.\n");
-                }
-                return 0;
+                encrypt_data((unsigned char *)csv_data, strlen(csv_data), password, FILENAME);
             }
 
-            default:
-                printf("Invalid choice.\n");
-                break;
+            if (selectedEntry >= -1) {
+                //input fields with separate edit modes
+                DrawText("Site Field:", 25, 475, 10, DARKBLUE);
+                if (GuiTextBox((Rectangle){20, 500, 200, 30}, site, MAX_FIELD, siteEdit)) {
+                    siteEdit = !siteEdit;
+                    userEdit = passEdit = false;
+                }
+                DrawText("User Field:", 245, 475, 10, DARKBLUE);
+                if (GuiTextBox((Rectangle){240, 500, 200, 30}, user, MAX_FIELD, userEdit)) {
+                    userEdit = !userEdit;
+                    siteEdit = passEdit = false;
+                }
+                DrawText("Password Field:", 465, 475, 10, DARKBLUE);
+                if (GuiTextBox((Rectangle){460, 500, 200, 30}, pass, MAX_FIELD, passEdit)) {
+                    passEdit = !passEdit;
+                    siteEdit = userEdit = false;
+                }
+
+                const char* buttonLabel;
+                if (selectedEntry == -1) {
+                    buttonLabel = "Add";
+                } else {
+                    buttonLabel = "Update";
+                }
+
+                if (GuiButton((Rectangle){680, 500, 100, 30}, buttonLabel)) {
+                    if (selectedEntry == -1 && count < MAX_ENTRIES) {
+                        strcpy(entries[count].site, site);
+                        strcpy(entries[count].user, user);
+                        strcpy(entries[count].password, pass);
+                        count++;
+                    } else if (selectedEntry >= 0) {
+                        strcpy(entries[selectedEntry].site, site);
+                        strcpy(entries[selectedEntry].user, user);
+                        strcpy(entries[selectedEntry].password, pass);
+                    }
+                    selectedEntry = -1;
+                    siteEdit = userEdit = passEdit = false;
+                }
+
+                if (selectedEntry >= 0 && GuiButton((Rectangle){680, 540, 100, 30}, "Delete")) {
+                    for (int i = selectedEntry; i < count - 1; i++) {
+                        entries[i] = entries[i + 1];
+                    }
+                    count--;
+                    selectedEntry = -1;
+                    siteEdit = userEdit = passEdit = false;
+                }
+            }
+
+            //Unfocuses textboxes if mouse is outside any of the fields
+            if (IsMouseButtonPressed(MOUSE_LEFT_BUTTON)) {
+                Vector2 mouse = GetMousePosition();
+                if (!CheckCollisionPointRec(mouse, (Rectangle){20, 500, 200, 30}) &&
+                    !CheckCollisionPointRec(mouse, (Rectangle){240, 500, 200, 30}) &&
+                    !CheckCollisionPointRec(mouse, (Rectangle){460, 500, 200, 30})) {
+                    siteEdit = userEdit = passEdit = false;
+                }
+            }
         }
+
+        EndDrawing();
     }
 
-
+    CloseWindow();
     return 0;
 }
