@@ -211,6 +211,9 @@ int main(void) {
     bool pass_edit = false;
     bool show_passwords = false;
 
+    // Pagination keeps the vault list readable while still allowing access to every entry.
+    const int entriesPerPage = 12;
+    int currentPage = 0;
     char message[MESSAGE_MAX] = {0};
 
     // raylib applications redraw and process input once per frame until the window closes.
@@ -219,7 +222,7 @@ int main(void) {
         ClearBackground(RAYWHITE);
 
         if (screen == SCREEN_HOME) {
-            // Home screen detects whether a vault already exists and offers the correct next actions.
+            // Home screen detects whether a vault already exists and offers the correct next actions
             draw_centered_text("Password Manager", 145, 32, DARKBLUE);
 
             bool vault_exists = FileExists(FILENAME);
@@ -258,18 +261,10 @@ int main(void) {
             draw_centered_text("Choose a master password with at least 8 characters.", 165, 16, DARKGRAY);
 
             DrawText("Master password", 240, 225, 16, DARKGRAY);
-            password_box((Rectangle){240, 250, 320, 34},
-                         vault_password,
-                         PASSWORD_MAX,
-                         &password_active,
-                         false);
+            password_box((Rectangle){240, 250, 320, 34}, vault_password, PASSWORD_MAX, &password_active, false);
 
             DrawText("Confirm password", 240, 305, 16, DARKGRAY);
-            password_box((Rectangle){240, 330, 320, 34},
-                         confirm_password,
-                         PASSWORD_MAX,
-                         &confirm_password_active,
-                         false);
+            password_box((Rectangle){240, 330, 320, 34}, confirm_password, PASSWORD_MAX, &confirm_password_active, false);
 
             // Validate the master password before creating and immediately saving an empty vault.
             if (GuiButton((Rectangle){240, 390, 150, 38}, "Create Vault")) {
@@ -282,8 +277,10 @@ int main(void) {
                 } else {
                     count = 0;
                     clear_entries(entries, MAX_ENTRIES);
+
                     if (save_vault(entries, count, vault_password, message, sizeof(message))) {
                         legacy_vault_loaded = false;
+                        currentPage = 0;
                         clear_sensitive_string(confirm_password, sizeof(confirm_password));
                         reset_entry_editor(site, user, pass, &selected_entry, &site_edit, &user_edit, &pass_edit);
                         screen = SCREEN_VAULT;
@@ -326,6 +323,7 @@ int main(void) {
                         } else {
                             count = loaded_count;
                             legacy_vault_loaded = legacy_format;
+                            currentPage = 0;
                             reset_entry_editor(site, user, pass, &selected_entry, &site_edit, &user_edit, &pass_edit);
                             // A legacy vault remains usable, but the user is prompted to save it so save_vault() rewrites it using the current authenticated format.
                             if (legacy_format) {
@@ -359,15 +357,28 @@ int main(void) {
             DrawText("Vault Entries", 20, 10, 20, DARKBLUE);
 
             GuiCheckBox((Rectangle){650, 125, 20, 20}, "Show passwords", &show_passwords);
-
-            // Keep the current fixed layout to a maximum of 12 visible entry buttons.
-            int visible_count;
-            if (count < 12) {
-                visible_count = count;
+            // Calculate how many pages are needed. An empty vault still displays as page 1 of 1.
+            int totalPages;
+            if (count == 0) {
+                totalPages = 1;
             } else {
-                visible_count = 12;
+                totalPages = (count + entriesPerPage - 1) / entriesPerPage;
             }
-            for (int i = 0; i < visible_count; i++) {
+            // Keep the current page valid if entries were added or deleted.
+            if (currentPage >= totalPages) {
+                currentPage = totalPages - 1;
+            }
+            if (currentPage < 0) {
+                currentPage = 0;
+            }
+
+            int startIndex = currentPage * entriesPerPage;
+            int endIndex = startIndex + entriesPerPage;
+            if (endIndex > count) {
+                endIndex = count;
+            }
+            // Draw only the entries on the current page while keeping each entry's real array index.
+            for (int i = startIndex; i < endIndex; i++) {
                 char buffer[360];
                 const char *display_password;
 
@@ -378,8 +389,10 @@ int main(void) {
                     display_password = "********";
                 }
                 snprintf(buffer, sizeof(buffer), "%d. %s | %s | %s", i + 1, entries[i].site, entries[i].user, display_password);
+                // Convert the real entry index into its row position on the current page.
+                int displayIndex = i - startIndex;
                 // Selecting an entry copies its fields into the editor for possible modification.
-                if (GuiButton((Rectangle){20, 40 + i * 35, 600, 30}, buffer)) {
+                if (GuiButton((Rectangle){20, 40 + displayIndex * 35, 600, 30}, buffer)) {
                     selected_entry = i;
                     snprintf(site, sizeof(site), "%s", entries[i].site);
                     snprintf(user, sizeof(user), "%s", entries[i].user);
@@ -390,9 +403,23 @@ int main(void) {
                 }
             }
 
-            if (count > visible_count) {
-                DrawText("Only the first 12 entries are shown in this version.", 20, 465, 12, GRAY);
+            // Move between pages. Changing pages clears any selection from the previous page.
+            if (GuiButton((Rectangle){650, 215, 55, 30}, "Prev")) {
+                if (currentPage > 0) {
+                    currentPage--;
+                    reset_entry_editor(site, user, pass, &selected_entry, &site_edit, &user_edit, &pass_edit);
+                }
             }
+
+            if (GuiButton((Rectangle){715, 215, 55, 30}, "Next")) {
+                if (currentPage < totalPages - 1) {
+                    currentPage++;
+                    reset_entry_editor(site, user, pass, &selected_entry, &site_edit, &user_edit, &pass_edit);
+                }
+            }
+            char pageText[64];
+            snprintf(pageText, sizeof(pageText), "Page %d of %d", currentPage + 1, totalPages);
+            DrawText(pageText, 650, 255, 14, DARKGRAY);
 
             if (GuiButton((Rectangle){650, 40, 120, 30}, "Add Entry")) {
                 reset_entry_editor(site, user, pass, &selected_entry, &site_edit, &user_edit, &pass_edit);
@@ -405,7 +432,7 @@ int main(void) {
                 }
             }
 
-            // Locking removes decrypted entries, passwords, and editor contents from memory.
+            // Locking removes decrypted entries passwords and editor contents from memory.
             if (GuiButton((Rectangle){650, 165, 120, 30}, "Lock Vault")) {
                 clear_entries(entries, MAX_ENTRIES);
                 count = 0;
@@ -419,6 +446,7 @@ int main(void) {
                 pass_edit = false;
                 show_passwords = false;
                 legacy_vault_loaded = false;
+                currentPage = 0;
                 screen = SCREEN_HOME;
                 set_message(message, sizeof(message), "Vault locked.");
             }
@@ -450,9 +478,7 @@ int main(void) {
             if (GuiButton((Rectangle){680, 500, 100, 30}, button_label)) {
                 if (site[0] == '\0' || user[0] == '\0' || pass[0] == '\0') {
                     set_message(message, sizeof(message), "Site, username, and password are required.");
-                } else if (!field_is_safe_for_csv(site) ||
-                           !field_is_safe_for_csv(user) ||
-                           !field_is_safe_for_csv(pass)) {
+                } else if (!field_is_safe_for_csv(site) || !field_is_safe_for_csv(user) || !field_is_safe_for_csv(pass)) {
                     set_message(message, sizeof(message), "Fields cannot contain commas or line breaks.");
                 } else if (selected_entry == -1) {
                     if (count >= MAX_ENTRIES) {
@@ -462,6 +488,8 @@ int main(void) {
                         snprintf(entries[count].user, MAX_FIELD, "%s", user);
                         snprintf(entries[count].password, MAX_FIELD, "%s", pass);
                         count++;
+                        // Move to the page containing the newly added entry.
+                        currentPage = (count - 1) / entriesPerPage;
                         reset_entry_editor(site, user, pass, &selected_entry, &site_edit, &user_edit, &pass_edit);
                         set_message(message, sizeof(message), "Entry added. Save Vault to persist changes.");
                     }
@@ -474,7 +502,7 @@ int main(void) {
                 }
             }
 
-            // Delete by shifting later entries left, then cleanse the now-unused final slot.
+            // Delete by shifting later entries left then cleanse the now unused final slot.
             if (selected_entry >= 0 &&
                 GuiButton((Rectangle){680, 540, 100, 30}, "Delete")) {
                 for (int i = selected_entry; i < count - 1; i++) {
@@ -483,6 +511,16 @@ int main(void) {
                 if (count > 0) {
                     OPENSSL_cleanse(&entries[count - 1], sizeof(Entry));
                     count--;
+                    // If the last entry on a page was deleted move back to the last valid page.
+                    int updatedTotalPages;
+                    if (count == 0) {
+                        updatedTotalPages = 1;
+                    } else {
+                        updatedTotalPages = (count + entriesPerPage - 1) / entriesPerPage;
+                    }
+                    if (currentPage >= updatedTotalPages) {
+                        currentPage = updatedTotalPages - 1;
+                    }
                 }
                 reset_entry_editor(site, user, pass, &selected_entry, &site_edit, &user_edit, &pass_edit);
                 set_message(message, sizeof(message), "Entry deleted. Save Vault to persist changes.");

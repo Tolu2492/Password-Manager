@@ -11,6 +11,7 @@ A lightweight desktop password vault written in C with raylib/raygui for the int
 - Vault contents use AES-256-GCM authenticated encryption.
 - Existing legacy `Salted__` AES-256-CBC vaults created by earlier versions can still be opened. Saving the vault rewrites it in the new authenticated format.
 - Vault writes use a temporary file and replace the old vault only after a successful write.
+- New Pagination Support for vaults with more than 12 entries.
 
 ## Features
 
